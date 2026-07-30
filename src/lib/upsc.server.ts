@@ -154,13 +154,13 @@ ${answer}`;
   }
 }
 
-export async function scheduleRevisions(chapterId: string) {
+export async function scheduleRevisions(chapterId: string, userId: string) {
   const sb = await getSupabaseAdmin();
   const now = Date.now();
   const rows = [
-    { chapter_id: chapterId, due_at: new Date(now + 3 * 86400000).toISOString(), stage: "3d" },
-    { chapter_id: chapterId, due_at: new Date(now + 7 * 86400000).toISOString(), stage: "7d" },
-    { chapter_id: chapterId, due_at: new Date(now + 14 * 86400000).toISOString(), stage: "14d" },
+    { chapter_id: chapterId, user_id: userId, due_at: new Date(now + 3 * 86400000).toISOString(), stage: "3d" },
+    { chapter_id: chapterId, user_id: userId, due_at: new Date(now + 7 * 86400000).toISOString(), stage: "7d" },
+    { chapter_id: chapterId, user_id: userId, due_at: new Date(now + 14 * 86400000).toISOString(), stage: "14d" },
   ];
   await sb.from("revision_schedule").insert(rows);
 }

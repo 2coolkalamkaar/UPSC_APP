@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   extractPyqsFromMedia,
   extractPyqsFromText,
@@ -139,25 +140,29 @@ export const chapterQuizMixed = createServerFn({ method: "POST" })
     return { questions: merged.slice(0, data.count) };
   });
 
-export const getWeakChapters = createServerFn({ method: "GET" }).handler(async () => {
-  const sb = await getSupabaseAdmin();
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-  const { data: chapters } = await sb.from("chapters").select("id, slug, title, order").order("order");
-  const { data: attempts } = await sb
-    .from("quiz_attempts")
-    .select("chapter_id, score, total, taken_at")
-    .gte("taken_at", weekAgo);
-  const rows = (chapters ?? []).map((c) => {
-    const a = (attempts ?? []).filter((x) => x.chapter_id === c.id);
-    const q = a.reduce((s, x) => s + x.total, 0);
-    const ok = a.reduce((s, x) => s + x.score, 0);
-    const pct = q > 0 ? Math.round((100 * ok) / q) : null;
-    return { slug: c.slug, title: c.title, attempts: a.length, questions: q, accuracyPct: pct };
+export const getWeakChapters = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: chapters } = await context.supabase
+      .from("chapters")
+      .select("id, slug, title, order")
+      .order("order");
+    const { data: attempts } = await context.supabase
+      .from("quiz_attempts")
+      .select("chapter_id, score, total, taken_at")
+      .gte("taken_at", weekAgo);
+    const rows = (chapters ?? []).map((c) => {
+      const a = (attempts ?? []).filter((x) => x.chapter_id === c.id);
+      const q = a.reduce((s, x) => s + x.total, 0);
+      const ok = a.reduce((s, x) => s + x.score, 0);
+      const pct = q > 0 ? Math.round((100 * ok) / q) : null;
+      return { slug: c.slug, title: c.title, attempts: a.length, questions: q, accuracyPct: pct };
+    });
+    const tested = rows.filter((r) => r.accuracyPct !== null) as Array<
+      typeof rows[number] & { accuracyPct: number }
+    >;
+    tested.sort((a, b) => a.accuracyPct - b.accuracyPct);
+    const weak = tested.filter((r) => r.accuracyPct < 70).slice(0, 5);
+    return { weekly: tested, weak };
   });
-  const tested = rows.filter((r) => r.accuracyPct !== null) as Array<
-    typeof rows[number] & { accuracyPct: number }
-  >;
-  tested.sort((a, b) => a.accuracyPct - b.accuracyPct);
-  const weak = tested.filter((r) => r.accuracyPct < 70).slice(0, 5);
-  return { weekly: tested, weak };
-});

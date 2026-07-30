@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   extractNewsFromMedia,
   extractNewsFromText,
@@ -10,6 +11,7 @@ import {
 import { getSupabaseAdmin } from "./upsc.server";
 
 export const uploadNewspaperFile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) =>
     z
       .object({
@@ -21,17 +23,19 @@ export const uploadNewspaperFile = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const rows = await extractNewsFromMedia({ mimeType: data.mimeType, base64: data.base64 });
     if (rows.length === 0) return { inserted: 0, extracted: 0 };
-    const { inserted } = await insertNews(rows, {
+    const { inserted, notified } = await insertNews(rows, {
       source: data.source,
       published_on: data.published_on,
+      userId: context.userId,
     });
-    return { inserted, extracted: rows.length };
+    return { inserted, extracted: rows.length, notified };
   });
 
 export const uploadNewspaperText = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) =>
     z
       .object({
@@ -41,14 +45,15 @@ export const uploadNewspaperText = createServerFn({ method: "POST" })
       })
       .parse(data),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const rows = await extractNewsFromText(data.text);
     if (rows.length === 0) return { inserted: 0, extracted: 0 };
-    const { inserted } = await insertNews(rows, {
+    const { inserted, notified } = await insertNews(rows, {
       source: data.source,
       published_on: data.published_on,
+      userId: context.userId,
     });
-    return { inserted, extracted: rows.length };
+    return { inserted, extracted: rows.length, notified };
   });
 
 export const listCurrentAffairs = createServerFn({ method: "GET" }).handler(async () => {

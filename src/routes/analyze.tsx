@@ -1,7 +1,17 @@
 import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ArrowLeft, Clock } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 import { getAnalytics } from "@/lib/upsc.functions";
 import { getWeakChapters } from "@/lib/pyq.functions";
@@ -43,6 +53,33 @@ function Analyze() {
     Accuracy: c.accuracyPct,
   }));
 
+  const trendData = data.accuracyTrend.map((d) => ({
+    date: new Date(d.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    Accuracy: d.accuracyPct,
+    questions: d.questions,
+  }));
+
+  const totalMinutes = Math.round(data.totalTimeSeconds / 60);
+  const chaptersWithTime = [...data.perChapter]
+    .filter((c) => c.timeSeconds > 0)
+    .sort((a, b) => b.timeSeconds - a.timeSeconds);
+
+  function heatColor(pct: number, attempts: number) {
+    if (attempts === 0) return "bg-muted/50 text-muted-foreground";
+    if (pct < 50) return "bg-destructive/80 text-destructive-foreground";
+    if (pct < 70) return "bg-amber-500/80 text-white";
+    if (pct < 85) return "bg-emerald-500/70 text-white";
+    return "bg-emerald-600 text-white";
+  }
+
+  function formatMins(seconds: number) {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
@@ -55,14 +92,81 @@ function Analyze() {
       </header>
       <main className="mx-auto max-w-4xl px-6 py-8">
         <h1 className="text-2xl font-semibold tracking-tight">Your Polity, in numbers</h1>
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat label="Quiz attempts" value={data.totalAttempts} />
           <Stat label="Mains evaluated" value={data.totalMains} />
           <Stat
             label="Chapters covered"
             value={data.perChapter.filter((c) => c.attempts > 0).length}
           />
+          <Stat label="Study time (min)" value={totalMinutes} />
         </div>
+
+        <section className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <h2 className="text-sm font-medium">Revision completion</h2>
+            <div className="mt-2 flex items-end gap-2">
+              <div className="text-3xl font-semibold">{data.revision.completionPct}%</div>
+              <div className="pb-1 text-xs text-muted-foreground">
+                {data.revision.done}/{data.revision.total} scheduled reviews done
+              </div>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary"
+                style={{ width: `${data.revision.completionPct}%` }}
+              />
+            </div>
+            <div className="mt-3 flex gap-4 text-[11px] text-muted-foreground">
+              <span>
+                Overdue: <span className="text-destructive font-medium">{data.revision.overdue}</span>
+              </span>
+              <span>Upcoming: <span className="text-foreground font-medium">{data.revision.upcoming}</span></span>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-card p-4">
+            <h2 className="flex items-center gap-1 text-sm font-medium">
+              <Clock className="h-3.5 w-3.5" /> Top chapters by time
+            </h2>
+            {chaptersWithTime.length === 0 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Open a chapter and start reading — time spent will appear here.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {chaptersWithTime.slice(0, 5).map((c) => (
+                  <div key={c.slug} className="flex items-center justify-between text-xs">
+                    <div className="truncate pr-2">{c.title}</div>
+                    <div className="text-muted-foreground">{formatMins(c.timeSeconds)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-lg border border-border bg-card p-4">
+          <h2 className="text-sm font-medium">Accuracy over time (last 30 days)</h2>
+          <div className="mt-4 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} width={28} />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="Accuracy"
+                  stroke="var(--primary)"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
 
         <section className="mt-8 rounded-lg border border-border bg-card p-4">
           <h2 className="text-sm font-medium">Accuracy by chapter</h2>
@@ -76,6 +180,28 @@ function Analyze() {
                 <Bar dataKey="Accuracy" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-lg border border-border bg-card p-4">
+          <h2 className="text-sm font-medium">Weak-area heatmap</h2>
+          <p className="text-xs text-muted-foreground">
+            Each cell is a chapter. Red = weak, green = strong, grey = not yet tested.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+            {data.perChapter.map((c) => (
+              <Link
+                key={c.slug}
+                to="/read/$chapter"
+                params={{ chapter: c.slug }}
+                className={`rounded-md p-3 text-xs transition-opacity hover:opacity-90 ${heatColor(c.accuracyPct, c.attempts)}`}
+              >
+                <div className="truncate font-medium">{c.title}</div>
+                <div className="mt-1 opacity-90">
+                  {c.attempts > 0 ? `${c.accuracyPct}% · ${c.attempts} test${c.attempts === 1 ? "" : "s"}` : "Untested"}
+                </div>
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -137,6 +263,7 @@ function Analyze() {
                   <div className="text-xs text-muted-foreground">
                     {c.attempts} attempt{c.attempts === 1 ? "" : "s"}
                     {c.dueRevisions > 0 ? ` · ${c.dueRevisions} revision${c.dueRevisions === 1 ? "" : "s"} due` : ""}
+                    {c.timeSeconds > 0 ? ` · ${formatMins(c.timeSeconds)} studied` : ""}
                   </div>
                 </div>
                 <div className="text-right">

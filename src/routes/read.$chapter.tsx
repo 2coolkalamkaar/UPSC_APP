@@ -5,7 +5,7 @@ import { ArrowLeft, BookOpen, Loader2, Newspaper, Send, Sparkles, ClipboardCheck
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-import { askChapter, getChapter } from "@/lib/upsc.functions";
+import { askChapter, getChapter, logChapterTime } from "@/lib/upsc.functions";
 import { relatedNews } from "@/lib/currentaffairs.functions";
 import { getBookPdfUrl, getChapterBookInfo } from "@/lib/books.functions";
 import { useStrictMode } from "@/hooks/useStrictMode";
@@ -49,6 +49,7 @@ function ReadChapter() {
   const ask = useServerFn(askChapter);
   const fetchNews = useServerFn(relatedNews);
   const getUrl = useServerFn(getBookPdfUrl);
+  const logTime = useServerFn(logChapterTime);
   const [strict] = useStrictMode();
   const [mode, setMode] = useState<"text" | "pdf">("text");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -69,6 +70,45 @@ function ReadChapter() {
       }>
   >(null);
   const [newsLoading, setNewsLoading] = useState(true);
+
+  // Track visible reading time per chapter and flush in ~30s chunks.
+  useEffect(() => {
+    let seconds = 0;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const flush = () => {
+      if (seconds > 0) {
+        const s = seconds;
+        seconds = 0;
+        logTime({ data: { slug: chapter, seconds: s } }).catch(() => {});
+      }
+    };
+    const start = () => {
+      if (interval) return;
+      interval = setInterval(() => {
+        seconds += 1;
+        if (seconds >= 30) flush();
+      }, 1000);
+    };
+    const stop = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+      flush();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") start();
+      else stop();
+    };
+    if (document.visibilityState === "visible") start();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+      stop();
+    };
+  }, [chapter, logTime]);
 
   useEffect(() => {
     let alive = true;
