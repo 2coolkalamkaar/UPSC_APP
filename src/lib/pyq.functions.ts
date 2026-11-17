@@ -11,7 +11,7 @@ import {
 import { getSupabaseAdmin } from "./upsc.server";
 
 export const uploadPyqFile = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         filename: z.string(),
@@ -44,7 +44,7 @@ export const uploadPyqFile = createServerFn({ method: "POST" })
   });
 
 export const uploadPyqText = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         text: z.string().min(20).max(50000),
@@ -82,7 +82,7 @@ export const listPyqLibrary = createServerFn({ method: "GET" }).handler(async ()
 });
 
 export const relatedPyqs = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z.object({ slug: z.string(), limit: z.number().int().min(1).max(10).default(5) }).parse(data),
   )
   .handler(async ({ data }) => {
@@ -91,7 +91,7 @@ export const relatedPyqs = createServerFn({ method: "POST" })
   });
 
 export const chapterQuizMixed = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         slug: z.string(),

@@ -47,14 +47,14 @@ export const listChapters = createServerFn({ method: "GET" })
   });
 
 export const getChapter = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ slug: z.string() }).parse(data))
+  .validator((data: unknown) => z.object({ slug: z.string() }).parse(data))
   .handler(async ({ data }) => {
     const { chapter, chunks } = await loadChapterBySlug(data.slug);
     return { chapter, chunks };
   });
 
 export const askChapter = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         slug: z.string(),
@@ -66,7 +66,7 @@ export const askChapter = createServerFn({ method: "POST" })
   .handler(async ({ data }) => ragChapterAnswer(data.slug, data.query, data.strict));
 
 export const chapterQuiz = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         slug: z.string(),
@@ -87,7 +87,7 @@ const ResultSchema = z.object({
 
 export const recordAttempt = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         chapterSlug: z.string(),
@@ -274,7 +274,7 @@ const DailyResultSchema = z.object({
 
 export const finishDailyReview = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         results: z.array(DailyResultSchema).min(1),
@@ -329,12 +329,12 @@ export const finishDailyReview = createServerFn({ method: "POST" })
   });
 
 export const revisionMicroTest = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ slug: z.string() }).parse(data))
+  .validator((data: unknown) => z.object({ slug: z.string() }).parse(data))
   .handler(async ({ data }) => generateQuiz(data.slug, 5));
 
 export const markRevisionDone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => z.object({ id: z.string() }).parse(data))
+  .validator((data: unknown) => z.object({ id: z.string() }).parse(data))
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase
       .from("revision_schedule")
@@ -347,7 +347,7 @@ export const markRevisionDone = createServerFn({ method: "POST" })
 
 export const submitMains = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         question: z.string().min(5).max(500),
@@ -439,7 +439,7 @@ export const getMainsTrends = createServerFn({ method: "GET" })
 
 export const logChapterTime = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({ slug: z.string(), seconds: z.number().int().min(1).max(3600) })
       .parse(data),

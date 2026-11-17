@@ -1,7 +1,7 @@
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { z } from "zod";
 
-import { createGoogleProvider } from "./ai-gateway.server";
+import { createGoogleProvider, embedText, toVectorLiteral } from "./ai-gateway.server";
 import { getSupabaseAdmin } from "./upsc.server";
 
 const MODEL = "gemini-2.5-flash";
@@ -44,30 +44,76 @@ Rules:
 - Skip forewords, indexes, and blank pages.
 - If the document is huge, cover as many chapters as you can from the start; do not fabricate content.`;
 
+import * as os from "os";
+import * as path from "path";
+import * as fs from "fs";
+import { GoogleAIFileManager } from "@google/generative-ai/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 async function extractFromFile(mimeType: string, base64: string): Promise<ParsedBook> {
-  const provider = getProvider();
-  const isImage = mimeType.startsWith("image/");
-  const filePart = isImage
-    ? { type: "image" as const, image: `data:${mimeType};base64,${base64}` }
-    : { type: "file" as const, mediaType: mimeType, data: base64 };
+  const apiKey = process.env.GOOGLE_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_API_KEY is not set.");
+  
+  const fm = new GoogleAIFileManager(apiKey);
+  const ai = new GoogleGenerativeAI(apiKey);
+  
+  const tempPath = path.join(os.tmpdir(), `upload-${Date.now()}.tmp`);
+  fs.writeFileSync(tempPath, Buffer.from(base64, "base64"));
+  
+  let uploadedFile: any;
   try {
-    const { output } = await generateText({
-      model: provider(MODEL),
-      output: Output.object({ schema: BookSchema }),
-      messages: [
-        { role: "user", content: [{ type: "text", text: INSTRUCTIONS }, filePart] },
-      ],
-    });
-    return output;
-  } catch (error) {
-    if (NoObjectGeneratedError.isInstance(error)) {
-      try {
-        return BookSchema.parse(JSON.parse(error.text ?? "{}"));
-      } catch {
-        return { sections: [] };
+    uploadedFile = await fm.uploadFile(tempPath, { mimeType });
+  } finally {
+    try { fs.unlinkSync(tempPath); } catch (e) {}
+  }
+  
+  try {
+    const model = ai.getGenerativeModel({
+      model: MODEL,
+      generationConfig: {
+        responseMimeType: "application/json",
       }
+    });
+    
+    // Convert zod schema to JSON schema manually or rely on AI SDK's parsing if we can't.
+    // For pure @google/generative-ai, we can ask for JSON matching our schema in the prompt.
+    const prompt = `${INSTRUCTIONS}
+
+Return a valid JSON object matching this schema:
+{
+  "sections": [
+    {
+      "title": "string",
+      "page_start": 0,
+      "page_end": 0,
+      "chunks": [
+        {
+          "heading": "string",
+          "content": "string",
+          "page_start": 0,
+          "page_end": 0
+        }
+      ]
     }
-    throw error;
+  ]
+}`;
+
+    const res = await model.generateContent([
+      prompt,
+      { fileData: { fileUri: uploadedFile.file.uri, mimeType: uploadedFile.file.mimeType } }
+    ]);
+    
+    const text = res.response.text();
+    // Clean up markdown code blocks if any
+    const jsonStr = text.replace(/^```json/m, "").replace(/```$/m, "").trim();
+    return BookSchema.parse(JSON.parse(jsonStr));
+  } catch (error: any) {
+    console.error("Gemini File Extraction Error:", error);
+    try {
+      return BookSchema.parse(JSON.parse(error.text ?? "{}"));
+    } catch {
+      return { sections: [] };
+    }
   }
 }
 
@@ -164,17 +210,25 @@ export async function uploadBookAndIngest(input: {
       .single();
     if (cErr || !chap) continue;
     nextOrder += 1;
-    const chunkRows = s.chunks
-      .filter((c) => c.content && c.content.trim().length > 20)
-      .map((c) => ({
-        chapter_id: chap.id as string,
-        book_id: bookId,
-        heading: c.heading?.trim() || null,
-        content: c.content.trim(),
-        page_start: c.page_start ?? s.page_start ?? null,
-        page_end: c.page_end ?? s.page_end ?? null,
-      }));
-    if (chunkRows.length === 0) continue;
+    const rawChunks = s.chunks.filter((c) => c.content && c.content.trim().length > 20);
+    if (rawChunks.length === 0) continue;
+
+    const chunkRows = await Promise.all(
+      rawChunks.map(async (c) => {
+        const textToEmbed = c.content.trim();
+        const vec = await embedText(textToEmbed);
+        return {
+          chapter_id: chap.id as string,
+          book_id: bookId,
+          heading: c.heading?.trim() || null,
+          content: textToEmbed,
+          page_start: c.page_start ?? s.page_start ?? null,
+          page_end: c.page_end ?? s.page_end ?? null,
+          embedding: toVectorLiteral(vec) as unknown as string,
+        };
+      })
+    );
+
     const { error: chErr } = await sb.from("chunks").insert(chunkRows as never);
     if (!chErr) chunkCount += chunkRows.length;
   }

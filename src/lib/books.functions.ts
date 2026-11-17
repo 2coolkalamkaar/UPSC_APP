@@ -36,7 +36,7 @@ export const listBooks = createServerFn({ method: "GET" }).handler(async () => {
 });
 
 export const uploadBook = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         title: z.string().min(2).max(200),
@@ -52,7 +52,7 @@ export const uploadBook = createServerFn({ method: "POST" })
   .handler(async ({ data }) => uploadBookAndIngest(data));
 
 export const setBookOfficial = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z.object({ id: z.string(), isOfficial: z.boolean() }).parse(data),
   )
   .handler(async ({ data }) => {
@@ -66,7 +66,7 @@ export const setBookOfficial = createServerFn({ method: "POST" })
   });
 
 export const deleteBook = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ id: z.string() }).parse(data))
+  .validator((data: unknown) => z.object({ id: z.string() }).parse(data))
   .handler(async ({ data }) => {
     const sb = await getSupabaseAdmin();
     const { data: b } = await sb
@@ -89,13 +89,13 @@ export const deleteBook = createServerFn({ method: "POST" })
   });
 
 export const getBookPdfUrl = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z.object({ id: z.string(), page: z.number().int().optional() }).parse(data),
   )
   .handler(async ({ data }) => ({ url: await signBookUrl(data.id, data.page) }));
 
 export const getChapterBookInfo = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ slug: z.string() }).parse(data))
+  .validator((data: unknown) => z.object({ slug: z.string() }).parse(data))
   .handler(async ({ data }) => {
     const sb = await getSupabaseAdmin();
     const { data: chapter } = await sb

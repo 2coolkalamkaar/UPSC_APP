@@ -1,4 +1,17 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { pipeline, env } from '@xenova/transformers';
+
+// Cache transformers locally
+env.cacheDir = './.cache/transformers';
+
+// Singleton instance of the extraction pipeline
+let extractorPromise: Promise<any> | null = null;
+function getExtractor() {
+  if (!extractorPromise) {
+    extractorPromise = pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+  return extractorPromise;
+}
 
 /**
  * Returns a Google AI provider instance using GOOGLE_API_KEY.
@@ -11,28 +24,16 @@ export function createGoogleProvider() {
 }
 
 /**
- * Embed a string using Google's text-embedding-004 model.
- * Returns a 768-dimensional vector.
- * NOTE: Google's text-embedding-004 is 768-dim, but the DB schema uses vector(3072).
- * We pad with zeros to match the DB column. You can re-migrate to vector(768) for efficiency.
+ * Embed a string using the local Xenova/all-MiniLM-L6-v2 ONNX model.
+ * Returns a 384-dimensional vector.
+ * 100% free, local, and zero API calls.
  */
 export async function embedText(text: string): Promise<number[]> {
-  const key = process.env.GOOGLE_API_KEY;
-  if (!key) throw new Error("Missing GOOGLE_API_KEY");
-  const google = createGoogleGenerativeAI({ apiKey: key });
-
-  const embeddingModel = google.textEmbeddingModel("text-embedding-004");
-  const { embedding } = await embeddingModel.doEmbed({ values: [text] });
-  const vec = embedding[0];
-
-  // The DB column is vector(3072). text-embedding-004 returns 768 dims.
-  // Pad to 3072 to avoid schema mismatch until we run the re-migration.
-  if (vec.length < 3072) {
-    const padded = new Array(3072).fill(0);
-    for (let i = 0; i < vec.length; i++) padded[i] = vec[i];
-    return padded;
-  }
-  return vec;
+  const extractor = await getExtractor();
+  const output = await extractor(text, { pooling: 'mean', normalize: true });
+  // output.data is a Float32Array, convert it to a standard JS array
+  const vec = Array.from(output.data);
+  return vec as number[];
 }
 
 export function toVectorLiteral(vec: number[]): string {

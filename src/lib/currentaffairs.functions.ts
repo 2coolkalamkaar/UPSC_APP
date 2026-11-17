@@ -12,7 +12,7 @@ import { getSupabaseAdmin } from "./upsc.server";
 
 export const uploadNewspaperFile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         filename: z.string(),
@@ -36,7 +36,7 @@ export const uploadNewspaperFile = createServerFn({ method: "POST" })
 
 export const uploadNewspaperText = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z
       .object({
         text: z.string().min(20).max(50000),
@@ -69,7 +69,7 @@ export const listCurrentAffairs = createServerFn({ method: "GET" }).handler(asyn
 });
 
 export const relatedNews = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) =>
+  .validator((data: unknown) =>
     z.object({ slug: z.string(), limit: z.number().int().min(1).max(10).default(5) }).parse(data),
   )
   .handler(async ({ data }) => {

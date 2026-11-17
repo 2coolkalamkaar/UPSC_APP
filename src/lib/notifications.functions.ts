@@ -64,7 +64,7 @@ export const unreadNotificationCount = createServerFn({ method: "GET" })
 
 export const markNotificationRead = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((data: unknown) => z.object({ id: z.string() }).parse(data))
+  .validator((data: unknown) => z.object({ id: z.string() }).parse(data))
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase
       .from("notifications")
